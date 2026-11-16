@@ -1,0 +1,18 @@
+# gitleaks settings for the secret scan in Tests (see the "Look for committed secrets" step in
+# .github/workflows/tests.yml). The default rules apply; only the paths below are left out.
+title = "Usher"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Made-up keys in the tests and the fake integrations"
+paths = [
+    # The fake Sonarr, Radarr, Prowlarr, Transmission and Jellyfin hold made-up API keys and tokens so the
+    # server can sign in to them. By the privacy rule they are never real.
+    '''^tests/mock_apps\.py$''',
+    # Test files check how keys, tokens and passwords are handled, so they hold made-up ones, and
+    # test_secret_scan.py builds a realistic-looking token to prove this scan catches it elsewhere.
+    # The upstream check scripts (tests/upstream_*.py) read real keys from the environment and stay scanned.
+    '''^tests/test_[a-z0-9_]+\.py$''',
+]

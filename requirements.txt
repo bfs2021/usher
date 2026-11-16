@@ -1,0 +1,2 @@
+# Usher's only third-party dependency: encryption and signing for Web Push (PyCA, widely audited).
+cryptography>=50.0.2,<51

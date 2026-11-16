@@ -1,0 +1,6 @@
+/* Settings → About → Changelog: the version list. */
+.changelog-group { padding: 12px 16px; }
+.changelog-group + .changelog-group { border-top: 0.5px solid var(--separator); }
+.changelog-kind { font-size: 0.8125rem; font-weight: 600; color: var(--label-2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.changelog-change { line-height: 1.4; margin: 0 0 8px; overflow-wrap: anywhere; }
+.changelog-change:last-child { margin-bottom: 0; }

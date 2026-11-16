@@ -1,0 +1,78 @@
+/* The details sheet, the Get it TV choices and the journey. */
+
+/* ---- details sheet ------------------------------------------------------------------------- */
+dialog.sheet {
+  border: 0; padding: 0; margin: auto auto 0; width: 100%; max-width: 100%; max-height: 92dvh;
+  border-radius: 14px 14px 0 0; background: var(--bg); color: var(--label);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+}
+dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.35); }
+dialog.sheet[open] { animation: sheet-up 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@container shell (min-width: 700px) {
+  dialog.sheet { margin: auto; width: min(560px, 92vw); border-radius: 14px; }
+  dialog.sheet[open] { animation: sheet-pop 0.24s ease-out; }
+}
+@media (min-width: 700px) {
+  dialog.sheet { margin: auto; width: min(560px, 92vw); border-radius: 14px; }
+}
+@keyframes sheet-pop { from { transform: scale(0.96); opacity: 0; } }
+.sheet-inner { padding: 8px 18px calc(22px + env(safe-area-inset-bottom)); overflow-y: auto; max-height: 92dvh; }
+/* The bar is 5px tall; the padding makes it easy to grab. */
+.grabber { width: 36px; height: 5px; box-sizing: content-box; padding: 8px 40px; margin: -8px auto 2px; border-radius: 3px; background: var(--label-3); background-clip: content-box; touch-action: none; cursor: grab; }
+.sheet-close { position: sticky; top: 0; float: right; border: 0; background: var(--fill); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--label-2); }
+.sheet-close svg { width: 14px; height: 14px; }
+.detail-head { display: grid; grid-template-columns: 110px 1fr; gap: 16px; align-items: end; margin: 6px 0 16px; }
+.detail-head .poster { width: 110px; aspect-ratio: 2 / 3; border-radius: 10px; object-fit: cover; background: var(--fill); }
+.detail-head h2 { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+.detail-head .sub { color: var(--label-2); margin: 4px 0 8px; }
+.overview { line-height: 1.45; margin-bottom: 16px; }
+.facts .row .meta { color: var(--label); }
+
+/* ---- TV choices in the Get it sheet --------------------------------------------------------- */
+fieldset.choices { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+fieldset.choices legend { display: block; width: 100%; padding: 0 4px 7px; font-size: 0.8125rem; color: var(--label-2); text-transform: uppercase; letter-spacing: 0.02em; }
+fieldset.choices .row { cursor: pointer; grid-template-columns: 1fr auto; }
+fieldset.choices input { position: absolute; opacity: 0; pointer-events: none; }
+fieldset.choices .tick { color: var(--accent-text); visibility: hidden; }
+fieldset.choices .tick svg { width: 20px; height: 20px; }
+fieldset.choices input:checked ~ .tick { visibility: visible; }
+fieldset.choices .row:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+/* ---- the journey: Asked → Found → Downloading → Getting it ready → Ready to watch ---------- */
+.dots { display: flex; gap: 4px; margin: 6px 0 2px; }
+.dots i { flex: 1; height: 4px; border-radius: 2px; background: var(--fill-strong); }
+.dots i.done { background: var(--accent); }
+.dots i.now { background: linear-gradient(90deg, var(--accent) var(--p, 40%), var(--fill-strong) var(--p, 40%)); transition: --p 0.6s; }
+.dots i.now.bad { background: var(--red); }
+.journey { list-style: none; margin: 8px 0 16px; padding: 4px 14px; background: var(--bg-elevated); border-radius: var(--radius); }
+.journey li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 10px 0; position: relative; color: var(--label-2); }
+.journey li:not(:last-child)::after {
+  content: ""; position: absolute; left: 13px; top: 36px; bottom: -8px; width: 2px; border-radius: 1px; background: var(--fill-strong);
+}
+.journey li.done::after { background: var(--accent); }
+.marker { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--fill-strong); background: var(--bg-elevated); }
+.marker svg { width: 16px; height: 16px; stroke-width: 2.6; }
+.journey li.done { color: var(--label-2); }
+.journey li.done .marker { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.journey li.now { color: var(--label); }
+.journey li.now .marker { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-tint); animation: pulse 1.6s ease-in-out infinite; }
+.journey li.now:last-child .marker { background: var(--green); border-color: var(--green); color: var(--on-green); animation: none; box-shadow: none; }
+.journey li.now.bad .marker { border-color: var(--red); box-shadow: 0 0 0 4px rgba(255, 59, 48, 0.15); animation: none; }
+.step-name { font-size: 1.0625rem; padding-top: 3px; }
+.journey li.now .step-name { font-weight: 600; }
+.step-detail { font-size: 0.9375rem; color: var(--label-2); margin-top: 2px; }
+.journey .progress { max-width: 320px; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 7px var(--accent-tint); } }
+
+/* ---- like and dislike in the details sheet: the chosen one is filled with the accent ------------- */
+.opinions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
+.opinions + .footnote { margin: -8px 0 16px; }
+.opinion-btn {
+  display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 999px; padding: 8px 16px; min-height: 44px;
+  background: var(--fill); color: var(--label); font-size: 0.9375rem; font-weight: 600; cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.opinion-btn svg { width: 20px; height: 20px; flex: none; }
+.opinion-btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.opinion-btn[aria-pressed="true"] svg { fill: currentColor; }

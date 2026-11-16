@@ -1,0 +1,25 @@
+name: Needs server
+# A change to these files isn't deployed by the 15-minute timer: someone has to run a step on the server
+# (sudo usher-update, or reinstalling the autodeploy units by hand). Label such pull requests needs-server,
+# so one label search finds them all.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - Dockerfile
+      - deploy/compose.yaml
+      - deploy/usher-update
+      - deploy/usher-autodeploy.*
+permissions:
+  pull-requests: write
+jobs:
+  label:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - run: gh api "repos/$GH_REPO/issues/$NUMBER/labels" -f "labels[]=needs-server"

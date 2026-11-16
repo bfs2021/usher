@@ -1,0 +1,30 @@
+name: Labels
+# Keeps the issue labels used by the templates. Runs when this file changes on main, or by hand.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/labels.yml]
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create bug         --color d73a4a --description "Something doesn't work as it should" --force
+          gh label create enhancement --color a2eeef --description "Make something existing work better"  --force
+          gh label create feature     --color 0e8a16 --description "Something new the app should do"      --force
+          gh label create needs-server --color fbca04 --description "Needs a step on the server after release (sudo usher-update)" --force
+          gh label create hold        --color b60205 --description "Auto-merge leaves this pull request open for a person to merge" --force
+          gh label create upstream    --color 5319e7 --description "An integration's latest release fails a call Usher makes" --force
+          gh label create upstream-release --color 7057ff --description "A new release of an integration to support" --force
+          gh label create upstream-beta --color d4c5f9 --description "Findings from the monthly check against announced betas" --force
+          gh label create vulnerabilities --color e99695 --description "A dependency or the image has a known vulnerability with a fix" --force
+          gh label create P1 --color b60205 --description "Priority 1: broken, or data at risk" --force
+          gh label create P2 --color d93f0b --description "Priority 2: planned work" --force
+          gh label create P3 --color fbca04 --description "Priority 3: nice to have" --force

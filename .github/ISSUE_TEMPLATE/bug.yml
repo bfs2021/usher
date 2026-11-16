@@ -1,0 +1,22 @@
+name: Bug
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: happens
+    attributes:
+      label: What happens
+      description: What you saw, and where in the app. Leave out addresses, names and IDs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: How to check it's fixed
+      description: A test or a step to repeat.

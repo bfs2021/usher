@@ -1,0 +1,122 @@
+name: Weekly checks
+# Slower checks than a pull request should wait for. One job: the tests on the image's Python and the next one, then the Docker image is built, started against
+# the mock integrations, and has to answer /healthz. Also runnable by hand.
+# Known vulnerabilities: pip-audit checks requirements.txt and Grype the image built here. One with a fix available
+# that .github/accepted-vulnerabilities.toml doesn't accept (or whose acceptance has expired) fails the run and
+# opens or updates the one issue labelled `vulnerabilities`; a run where both scans are clear closes it.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  slow-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python of the image
+        id: python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - run: python3 -m unittest discover -s tests -t .
+      - name: Next Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.15"
+          allow-prereleases: true
+      - run: pip install -r requirements.txt
+      - run: python3 -m unittest discover -s tests -t .
+
+      - name: Build the image
+        id: build
+        run: docker build -t usher-check .
+      - name: Start it against the mock integrations and wait for /healthz
+        # Made-up settings only, in usher.toml as on a server (the mock Jellyfin's viewing account is 888…).
+        # The image runs as 1000:1001, so the data folder is theirs.
+        run: |
+          python3 -m tests.mock_apps &
+          mkdir "$RUNNER_TEMP/data" && sudo chown 1000:1001 "$RUNNER_TEMP/data"
+          mkdir "$RUNNER_TEMP/config"
+          cat > "$RUNNER_TEMP/config/usher.toml" <<'EOF'
+          [server]
+          origin = "http://localhost:8484"
+          [media_server]
+          url = "http://127.0.0.1:9905"
+          user_id = "88888888888888888888888888888888"
+          [pvr.tv]
+          url = "http://127.0.0.1:9901"
+          [pvr.movies]
+          url = "http://127.0.0.1:9902"
+          [indexer_manager]
+          url = "http://127.0.0.1:9903"
+          [download_client]
+          url = "http://127.0.0.1:9904/transmission/rpc"
+          user = "x"
+          EOF
+          key_a=$(printf 'a%.0s' {1..32}); key_b=$(printf 'b%.0s' {1..32})
+          docker run -d --name usher-check --network host --read-only --tmpfs /tmp \
+            -v "$RUNNER_TEMP/data:/data" -v "$RUNNER_TEMP/config:/config:ro" \
+            -e "SONARR_API_KEY=$key_a" -e "RADARR_API_KEY=$key_a" -e "PROWLARR_API_KEY=$key_a" \
+            -e TR_PASS=x -e "JELLYFIN_API_KEY=$key_b" usher-check
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8484/healthz && exit 0
+            sleep 2
+          done
+          docker logs usher-check
+          echo "::error::The image did not answer /healthz within a minute."
+          exit 1
+      - name: Check the dependencies for known vulnerabilities
+        id: pip-audit
+        if: always()
+        # On the image's Python, in an environment of its own so nothing else sees pip-audit. pip-audit exits
+        # non-zero when it finds one; the last step judges the findings, so this one fails only without a report.
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          "$PYTHON" -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/pip" install -r requirements-audit.txt
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r requirements.txt --format json --output "$RUNNER_TEMP/pip-audit.json" \
+            || [ -s "$RUNNER_TEMP/pip-audit.json" ]
+      - name: Scan the image for known vulnerabilities
+        id: grype
+        if: always() && steps.build.outcome == 'success'
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: usher-check
+          only-fixed: true
+          fail-build: false
+          output-format: json
+          output-file: ${{ runner.temp }}/grype.json
+      - name: Open, update or close the vulnerabilities issue
+        # Only once both scans wrote a report, so a scan that couldn't run leaves the issue as it is.
+        if: always() && steps.pip-audit.outcome == 'success' && steps.grype.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          body="$RUNNER_TEMP/vulnerabilities.md"
+          python3 .github/scripts/vulnerabilities.py "$RUNNER_TEMP/pip-audit.json" "$RUNNER_TEMP/grype.json" > "$body"
+          open=$(gh api "repos/$GH_REPO/issues?labels=vulnerabilities&state=open&per_page=1" --jq '.[0].number // empty')
+          if [ ! -s "$body" ]; then
+            [ -n "$open" ] || exit 0
+            printf 'The dependencies and the image have no known vulnerability with a fix available any more.\n' > "$RUNNER_TEMP/note"
+            gh api "repos/$GH_REPO/issues/$open/comments" -F body=@"$RUNNER_TEMP/note" > /dev/null
+            gh api -X PATCH "repos/$GH_REPO/issues/$open" -f state=closed -f state_reason=completed > /dev/null
+            exit 0
+          fi
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$open" ]; then
+            gh api -X PATCH "repos/$GH_REPO/issues/$open" -F body=@"$body" > /dev/null
+          else
+            gh api "repos/$GH_REPO/issues" -f title="Known vulnerabilities in the dependencies or the image" \
+              -f "labels[]=vulnerabilities" -F body=@"$body" > /dev/null
+          fi
+          echo "::error::Known vulnerabilities with a fix available; see the issue labelled vulnerabilities."
+          exit 1

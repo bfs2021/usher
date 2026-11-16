@@ -1,0 +1,160 @@
+name: Upstream check
+# Starts the latest release of each integration, seeds minimal settings and runs the calls Usher makes against
+# them (tests/upstream_check.py). Weekly on the latest images, monthly on announced betas, or by hand. One job.
+# Latest: a failure opens or updates the one issue labelled
+# `upstream`, and a green run closes it; each new version of an app opens a `Support <App> <version>` issue labelled
+# `upstream-release`. Beta: only comments, on a standing issue labelled `upstream-beta`.
+on:
+  schedule:
+    - cron: "23 5 * * 5"
+    - cron: "47 5 1 * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "latest or beta"
+        default: latest
+        type: choice
+        options: [latest, beta]
+      jellyfin_image:
+        description: "Image to use instead of the channel's, for example an old or broken one to see the issue open"
+        default: ""
+      sonarr_image:
+        default: ""
+      radarr_image:
+        default: ""
+      prowlarr_image:
+        default: ""
+      transmission_image:
+        default: ""
+permissions:
+  contents: read
+  issues: write
+jobs:
+  upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CHANNEL: ${{ github.event_name == 'schedule' && github.event.schedule == '47 5 1 * *' && 'beta' || inputs.channel || 'latest' }}
+      OVERRIDE_JELLYFIN: ${{ inputs.jellyfin_image }}
+      OVERRIDE_SONARR: ${{ inputs.sonarr_image }}
+      OVERRIDE_RADARR: ${{ inputs.radarr_image }}
+      OVERRIDE_PROWLARR: ${{ inputs.prowlarr_image }}
+      OVERRIDE_TRANSMISSION: ${{ inputs.transmission_image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.x"
+      - name: Choose the images
+        # Official images only. Betas are the projects' own development tags; update them here when a project
+        # announces a new one (Sonarr v5 is the first).
+        run: |
+          if [ "$CHANNEL" = beta ]; then
+            set -- jellyfin/jellyfin:unstable lscr.io/linuxserver/sonarr:develop lscr.io/linuxserver/radarr:develop \
+              lscr.io/linuxserver/prowlarr:develop lscr.io/linuxserver/transmission:latest
+          else
+            set -- jellyfin/jellyfin:latest lscr.io/linuxserver/sonarr:latest lscr.io/linuxserver/radarr:latest \
+              lscr.io/linuxserver/prowlarr:latest lscr.io/linuxserver/transmission:latest
+          fi
+          i=0
+          for app in JELLYFIN SONARR RADARR PROWLARR TRANSMISSION; do
+            i=$((i + 1))
+            over=$(printenv "OVERRIDE_$app" || true)
+            image=${over:-${!i}}
+            if ! printf '%s' "$image" | grep -qE '^[a-z0-9][a-z0-9./_-]*(:[A-Za-z0-9._-]+)?$'; then
+              echo "::error::Not an image name: $app"
+              exit 1
+            fi
+            echo "IMAGE_$app=$image" >> "$GITHUB_ENV"
+          done
+      - name: Start the integrations
+        # Made-up keys and passwords that live for this run only. Ports are bound to the runner.
+        run: |
+          mkdir -p "$RUNNER_TEMP/tv" "$RUNNER_TEMP/movies"
+          key_a=$(openssl rand -hex 16); key_b=$(openssl rand -hex 16); tr_pass=$(openssl rand -hex 8)
+          echo "::add-mask::$key_a"; echo "::add-mask::$key_b"; echo "::add-mask::$tr_pass"
+          # Read by tests/upstream_check.py only; the server itself takes its addresses from usher.toml.
+          {
+            echo "SONARR_URL=http://127.0.0.1:8989"; echo "RADARR_URL=http://127.0.0.1:7878"
+            echo "PROWLARR_URL=http://127.0.0.1:9696"; echo "JELLYFIN_URL=http://127.0.0.1:8096"
+            echo "TRANSMISSION_URL=http://127.0.0.1:9091/transmission/rpc"
+            echo "SONARR_API_KEY=$key_a"; echo "RADARR_API_KEY=$key_a"; echo "PROWLARR_API_KEY=$key_b"
+            echo "TR_USER=check"; echo "TR_PASS=$tr_pass"; echo "JELLYFIN_USER=Viewer"
+            echo "UPSTREAM_ENV_FILE=$GITHUB_ENV"
+          } >> "$GITHUB_ENV"
+          ids=(-e "PUID=$(id -u)" -e "PGID=$(id -g)")
+          docker run -d --name sonarr -p 127.0.0.1:8989:8989 "${ids[@]}" -e "SONARR__AUTH__APIKEY=$key_a" -v "$RUNNER_TEMP/tv:/tv" "$IMAGE_SONARR"
+          docker run -d --name radarr -p 127.0.0.1:7878:7878 "${ids[@]}" -e "RADARR__AUTH__APIKEY=$key_a" -v "$RUNNER_TEMP/movies:/movies" "$IMAGE_RADARR"
+          docker run -d --name prowlarr -p 127.0.0.1:9696:9696 "${ids[@]}" -e "PROWLARR__AUTH__APIKEY=$key_b" "$IMAGE_PROWLARR"
+          docker run -d --name transmission -p 127.0.0.1:9091:9091 "${ids[@]}" -e USER=check -e "PASS=$tr_pass" "$IMAGE_TRANSMISSION"
+          docker run -d --name jellyfin -p 127.0.0.1:8096:8096 "$IMAGE_JELLYFIN"
+      - name: Seed minimal settings
+        run: python3 -m tests.upstream_seed
+      - name: Contract tests
+        id: contract
+        continue-on-error: true
+        run: python3 -m tests.upstream_check "$RUNNER_TEMP/out"
+      - name: Show the versions
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/out/results.json" ] || exit 0
+          python3 -m tests.upstream_report matrix "$RUNNER_TEMP/out/results.json" --stdout >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the real answers
+        # The source for refreshing the fixtures in tests/mock_apps.py: made-up seeded values only.
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: upstream-responses-${{ env.CHANNEL }}
+          path: ${{ runner.temp }}/out
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Open, update or close the issue
+        if: always() && steps.contract.outcome != 'skipped'
+        env:
+          OUTCOME: ${{ steps.contract.outcome }}
+        run: |
+          out="$RUNNER_TEMP/out"
+          label=upstream; [ "$CHANNEL" = beta ] && label=upstream-beta
+          open=$(gh api "repos/$GH_REPO/issues?labels=$label&state=open&per_page=1" --jq '.[0].number // empty')
+          if [ "$OUTCOME" = success ]; then
+            [ -n "$open" ] || exit 0
+            if [ "$CHANNEL" = beta ]; then
+              printf 'The check against the announced betas passes again.\n' > "$RUNNER_TEMP/note"
+              gh api "repos/$GH_REPO/issues/$open/comments" -F body=@"$RUNNER_TEMP/note" > /dev/null
+              exit 0
+            fi
+            printf 'The latest releases pass every call again.\n' > "$RUNNER_TEMP/note"
+            gh api "repos/$GH_REPO/issues/$open/comments" -F body=@"$RUNNER_TEMP/note" > /dev/null
+            gh api -X PATCH "repos/$GH_REPO/issues/$open" -f state=closed -f state_reason=completed > /dev/null
+            exit 0
+          fi
+          python3 -m tests.upstream_report issue "$out/results.json" > "$RUNNER_TEMP/body"
+          title=$(python3 -m tests.upstream_report title "$out/results.json")
+          if [ "$CHANNEL" = beta ]; then
+            # Betas only ever comment, on one standing issue that nothing here closes.
+            if [ -z "$open" ]; then
+              open=$(gh api "repos/$GH_REPO/issues" -f title="Upstream betas" -f "labels[]=$label" \
+                -f body="What the monthly check against the announced betas of the integrations found." --jq .number)
+            fi
+            gh api "repos/$GH_REPO/issues/$open/comments" -F body=@"$RUNNER_TEMP/body" > /dev/null
+          elif [ -n "$open" ]; then
+            gh api -X PATCH "repos/$GH_REPO/issues/$open" -f title="$title" -F body=@"$RUNNER_TEMP/body" > /dev/null
+          else
+            gh api "repos/$GH_REPO/issues" -f title="$title" -f "labels[]=$label" -F body=@"$RUNNER_TEMP/body" > /dev/null
+          fi
+      - name: Open or close the release issues
+        # One `upstream-release` issue per new version of each app, closed once every call passes on it or a newer
+        # version comes out (tests/upstream_releases.py). Latest images only; betas keep their standing issue.
+        if: always() && steps.contract.outcome != 'skipped' && env.CHANNEL != 'beta'
+        run: |
+          [ -f "$RUNNER_TEMP/out/results.json" ] || exit 0
+          python3 -m tests.upstream_releases "$RUNNER_TEMP/out/results.json"
+      - name: Fail on the latest images
+        if: steps.contract.outcome == 'failure' && env.CHANNEL != 'beta'
+        run: |
+          echo "::error::The latest releases fail a call Usher makes; see the issue labelled upstream."
+          exit 1

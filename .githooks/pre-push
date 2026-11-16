@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stops a push whose new commits hold identifying details (see tools/identifying_details.py).
+# Turn it on once per clone: git config core.hooksPath .githooks
+exec python3 "$(dirname "$0")/../tools/identifying_details.py" --pre-push "$1"

@@ -1,0 +1,24 @@
+name: Feature request
+description: Something new the app should do
+labels: [feature]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: What it should do
+      description: In plain words, from the point of view of someone using the app.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+  - type: textarea
+    id: out
+    attributes:
+      label: Not part of this
+      description: Anything deliberately left out.
+  - type: textarea
+    id: check
+    attributes:
+      label: How to check it works

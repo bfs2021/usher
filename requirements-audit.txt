@@ -1,0 +1,3 @@
+# The dependency audit the weekly checks run on requirements.txt, pinned so Dependabot keeps it current.
+# Kept apart from requirements-dev.txt so a pull request's Tests run doesn't install it. Not installed in the image.
+pip-audit==2.10.1

@@ -1,0 +1,39 @@
+/* Status → the summary card: how things are, then a row for each part that needs attention. Sizes in rem so it follows the reader's text size. */
+.summary .headline .title { white-space: normal; }   /* the headline wraps at larger text instead of being cut off */
+.summary .row { grid-template-columns: 1.375rem 1fr auto; }   /* one symbol column, so the dot and the warning symbol line up */
+.summary .row > .dot { justify-self: center; }
+.summary .lead { display: grid; place-items: center; width: 1.375rem; height: 1.375rem; color: var(--orange); }
+.summary .lead svg { width: 1.375rem; height: 1.375rem; }
+
+/* ---- Status on wide screens: the summary across the top, Health and Storage side by side. ---- */
+/* The threshold is in rem, not px, so larger text raises it and Status stays one column. Plain grid, nothing that slows older devices. */
+@container shell (min-width: 43.75rem) {
+  .content.status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; align-items: start; }
+  .content.status > .banner, .content.status > .status-summary { grid-column: 1 / -1; }
+}
+/* Settings is one column at a readable width, however wide the window. */
+.content.settings { max-width: 40rem; margin-inline: auto; }
+
+/* ---- Status details and Logs ------------------------------------------------------------------ */
+.messages { margin: 12px 0; display: grid; gap: 8px; }
+.messages p { background: var(--bg-elevated); border-radius: var(--radius); padding: 10px 14px; font-size: 0.9375rem; line-height: 1.4; }
+.log-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 12px; }
+.log-controls .segmented { min-width: 0; flex: 1 1 320px; }
+.log { background: var(--bg-elevated); border-radius: var(--radius); padding: 6px 0; font: 0.75rem/1.45 ui-monospace, "SF Mono", Menlo, monospace; max-height: 62dvh; overflow-y: auto; }
+.log .line { padding: 4px 12px; border-bottom: 0.5px solid var(--separator); white-space: pre-wrap; word-break: break-word; }
+.log .line:last-child { border-bottom: 0; }
+.log .t { color: var(--label-2); margin-right: 6px; }
+.log .lv { font-weight: 600; margin-right: 6px; }
+.log .warn .lv { color: var(--orange); }
+.log .error .lv { color: var(--red); }
+.log .src { color: var(--label-2); }
+dialog.sheet.big { max-width: 100%; }
+@media (min-width: 700px) { dialog.sheet.big { width: min(980px, 94vw); } }
+
+/* About: Usher's own icon stays bigger than TMDb's logo, as TMDb asks. */
+.about-app { display: flex; align-items: center; gap: 12px; padding: 4px 4px 10px; }
+.about-app .title { font-weight: 600; }
+.about-icon { width: 44px; height: 44px; border-radius: 10px; }
+.about-credit { padding: 6px 4px 0; }
+.about-app .footnote, .about-credit .footnote { padding-left: 0; }
+.about-tmdb { display: block; height: 12px; width: auto; }

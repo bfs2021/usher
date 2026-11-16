@@ -1,0 +1,43 @@
+# compose.yaml in the install folder (USHER_HOME, /opt/usher by default), copied there by deploy/setup.sh; the
+# code lives in its src folder. See deploy/README.md. Everything specific to one home lives in that folder only:
+#   config/usher.toml  every setting (see deploy/usher.example.toml)
+#   .env               secrets (root only), and the host folders and files mounted below
+#   site.env           the repo address setup.sh clones, and TZ, the container's time zone (read here for TZ)
+# Docker Compose reads the mount variables from .env and stops, naming the variable, if one is missing.
+services:
+  usher:
+    build: ./src
+    image: usher:local
+    container_name: usher
+    network_mode: host
+    user: "1000:1001"
+    env_file: [.env, site.env]
+    environment:
+      - USHER_CONFIG=/config/usher.toml
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 128
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro               # usher.toml; without it Usher doesn't start
+      # the only media folder Usher can touch: to show and empty Sonarr's and Radarr's recycle bin
+      - ${USHER_RECYCLE_BIN:?set USHER_RECYCLE_BIN in .env (see deploy/README.md)}:/recycle
+      # API keys, read from each app's own settings file
+      - ${USHER_SONARR_XML:?set USHER_SONARR_XML in .env (see deploy/README.md)}:/keys/sonarr.xml:ro
+      - ${USHER_RADARR_XML:?set USHER_RADARR_XML in .env (see deploy/README.md)}:/keys/radarr.xml:ro
+      - ${USHER_PROWLARR_XML:?set USHER_PROWLARR_XML in .env (see deploy/README.md)}:/keys/prowlarr.xml:ro
+    # the Dockerfile's HEALTHCHECK, repeated in full since this replaces it, plus start_interval: while starting it
+    # checks every 2 seconds (Docker Engine 25 or later), so `docker compose up --wait` returns within seconds
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8484/healthz', timeout=4).status == 200 else 1)"]
+      interval: 60s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 2s
+      retries: 3
+    logging:
+      options: { max-size: "10m", max-file: "3" }
+    restart: unless-stopped

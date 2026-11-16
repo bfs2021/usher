@@ -1,0 +1,7 @@
+.git
+tests
+deploy
+*.md
+!CHANGELOG.md
+**/__pycache__
+web/icon.svg

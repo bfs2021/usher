@@ -1,0 +1,95 @@
+# usher.toml: every choice Usher makes for you, in one place. Copy this to config/usher.toml in Usher's install
+# folder on the server (/opt/usher by default; see deploy/README.md)
+# (it's mounted read-only at /config/usher.toml in the container) and change what you need; any key you leave out
+# keeps the default shown here. `sudo usher-user config check` checks the file; the server won't start with a
+# mistake in it, and says which key is wrong.
+#
+# Secrets never go here: the Transmission password, Jellyfin key, TMDb token and Web Push keys stay in
+# .env in the install folder, and the Sonarr, Radarr and Prowlarr keys are read from their own config.xml.
+#
+# This file is the only place for settings: settings left in site.env or .env are ignored.
+#
+# The values below are made up or the defaults; nothing here describes a real installation.
+
+[server]
+origin = "https://usher.example.net"        # the address people open Usher at
+bind = "127.0.0.1:8484"                     # where the server listens (behind the reverse proxy)
+data_dir = "/data"                          # accounts, requests and preferences
+utc_offset_minutes = 0                      # time zone as minutes ahead of UTC, for times in Status and messages
+session_days = 90                           # how long a device stays signed in
+trusted_proxies = ["127.0.0.1", "::1"]      # reverse proxies whose X-Forwarded-For is believed
+push_contact = ""                           # contact sent to the push services; empty = origin
+shortcut_url = ""                           # iCloud link to the Shortcut named "Usher Connect"; empty = no row in Settings
+
+[media_server]                              # Jellyfin
+url = "http://127.0.0.1:8096"               # as the server reaches it
+public_url = "http://jellyfin.local:8096"   # as people open it in a browser
+user_id = "0123456789abcdef0123456789abcdef"   # required: the viewing account, by ID (sudo usher-user ids)
+
+[pvr.tv]                                    # Sonarr
+url = "http://127.0.0.1:8989"
+quality_profile_id = 0                      # by ID (sudo usher-user ids); 0 = look up [quality] profile_name
+
+[pvr.movies]                                # Radarr
+url = "http://127.0.0.1:7878"
+quality_profile_id = 0
+
+[indexer_manager]                           # Prowlarr
+url = "http://127.0.0.1:9696"
+
+[download_client]                           # Transmission (its password goes in .env as TR_PASS)
+url = "http://127.0.0.1:9091/transmission/rpc"
+user = ""
+
+[library]
+tv_folder = "/srv/media/TV Shows"           # library folder for new shows (a root folder in Sonarr)
+movie_folder = "/srv/media/Movies"          # library folder for new movies (a root folder in Radarr)
+media_path = "/srv/media"                   # picks the disk whose free space Status shows
+recycle_dir = "/recycle"                    # Sonarr's and Radarr's recycle bin, as mounted in the container
+
+[family]
+# Separate library folders for family-friendly titles (also added as root folders in Sonarr and Radarr).
+# When set, Get it files every title with one of these ratings there by itself. Empty = off.
+tv_folder = ""
+movie_folder = ""
+ratings = ["G", "PG", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "TV-PG"]
+
+[quality]
+profile_name = "HD-1080p"                   # used when no quality_profile_id is set
+fallback_contains = "1080"                  # without it, the first profile whose name contains this; then the first
+
+[discover]
+region = "US"                               # country for streaming availability
+language = "en-US"                          # language for titles and descriptions
+upcoming_language = "en"                    # original language of shows in All upcoming; "" = every language
+upcoming_days = 60                          # how far ahead All upcoming looks
+
+[storage]
+low_space_gb = 30                           # Status warns below this much free space
+
+[retries]
+# A request still waiting for a copy is searched for again: first after first_search_after_minutes, then every
+# early_every_hours for early_for_days (after which it's shown as not found yet), then every late_every_hours.
+first_search_after_minutes = 60
+early_every_hours = 6
+early_for_days = 3
+late_every_hours = 24
+# A monitored episode that has aired and has no file (even after its request is finished) is searched for
+# missing_grace_hours after it aired, then on the same schedule; at most missing_max_searches are sent at a time.
+missing_grace_hours = 3
+missing_max_searches = 5
+
+[downloads]
+# A download Sonarr or Radarr started that has made no progress for stalled_after_hours (nobody sharing it, or it
+# never started) is replaced by a healthier copy: one Sonarr or Radarr accept for the same episode, season or movie,
+# with clearly more people sharing it. Both run until one is added to the library; the other is removed with its
+# files. "report" only writes what it would do to Status -> Logs; switch to "on" once those lines look right.
+replace = "report"                          # "on", "report" or "off"
+stalled_after_hours = 6
+max_size_factor = 2                         # a replacement may be at most this many times the stalled copy's size
+min_free_margin_gb = 20                     # free space kept after it, on top of Sonarr's and Radarr's own minimum
+max_parallel = 2                            # replacements running at once
+max_attempts = 3                            # per episode, season or movie; then wait retry_after_days
+retry_after_days = 3
+folders = []                                # Transmission's download folders as Usher sees them (e.g. mounted
+                                            # read-only), checked for leftovers; empty = ask Transmission only

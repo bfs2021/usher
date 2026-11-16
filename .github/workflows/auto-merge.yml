@@ -1,0 +1,195 @@
+name: Auto-merge
+# Nobody reviews pull requests here: Tests (the tests and the privacy check) are the gate.
+# Once Tests pass on a pull request's latest commit, squash it into one commit on main (draft or not) and
+# delete its branch. Add the "hold" label to keep a pull request open. Pull requests from forks are never
+# merged this way. A Dependabot pull request with a major version update gets the "hold" label and a
+# comment saying so instead, and waits for a person to merge it; patch and minor updates merge as usual.
+# The squash commit's message is the pull request title, then its Summary section and its "Fixes #n"
+# lines. The squash commit is authored by the pull request's author (GitHub only accepts an author address
+# that belongs to the token's own account, so none is passed).
+# Before merging, the subject and message it is about to use are read against the PRIVACY_PATTERNS secret (the
+# pull request's text may have been edited after Tests passed). A match leaves the pull request open with a
+# comment naming only the part that matched. Dependabot's own run is not checked, as in Tests, which gets no
+# secrets for it. The check script comes from main through the API, never from the pull request's branch.
+# Before merging, the pull request takes the type labels (bug, enhancement, feature) of the issues it
+# fixes, so the merged pull requests can be filtered by type.
+# A merge made with the workflow's own token doesn't start other workflows or close the issues the pull
+# request fixes, so this closes the issues named by "Fixes #n" (or closes/resolves) in the pull request's
+# description itself, and releases the merge:
+# - If the squash commit's tree is the tree of the commit Tests passed on (main was already in the
+#   branch), it holds exactly what the pull request's Tests run checked, so it calls Release with it
+#   straight away: no second Tests run. Dependabot's runs skip the privacy check, so theirs are always
+#   tested again.
+# - Otherwise it starts Tests on main, which calls Release once it passes, as it does after a push.
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+  pull_request:
+    types: [closed]
+permissions: {}    # each job asks for what it needs
+concurrency:
+  group: auto-merge-${{ github.event.workflow_run.head_branch || github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+jobs:
+  merge:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write         # squash-merge, delete the branch
+      pull-requests: write    # label, mark ready, merge
+      issues: write           # label, comment, close the fixed issues
+      actions: write          # start Tests on main
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      TESTED_BY: ${{ github.event.workflow_run.actor.login }}
+    outputs:
+      release_sha: ${{ steps.merge.outputs.release_sha }}
+    steps:
+      - name: Label, squash, delete the branch, close fixed issues, and release or test main
+        id: merge
+        env:
+          PATTERNS: ${{ secrets.PRIVACY_PATTERNS }}
+        run: |
+          case "$BRANCH" in main|stable) echo "Never merges from $BRANCH."; exit 0;; esac
+          # --head matches the branch name only, and a fork can open a pull request from a branch of the same name:
+          # only a pull request from this repository's branch is ever picked. A fork's is merged by a person.
+          pr=$(gh pr list --head "$BRANCH" --state open --json number,headRefOid,isDraft,labels,isCrossRepository \
+                 --jq '[.[] | select(.isCrossRepository | not)] | .[0] | select(.) | [.number, .headRefOid, .isDraft, ([.labels[].name] | index("hold") != null)] | @tsv')
+          [ -n "$pr" ] || { echo "No open pull request from this repository's $BRANCH."; exit 0; }
+          IFS=$'\t' read -r number head draft hold <<< "$pr"
+          if [ "$head" != "$SHA" ]; then echo "#$number has a newer commit; its own Tests run decides."; exit 0; fi
+          if [ "$hold" = "true" ]; then echo "#$number is on hold."; exit 0; fi
+
+          gh api "repos/$GH_REPO/pulls/$number" > "$RUNNER_TEMP/pr.json"
+          # Every commit's message, for Dependabot's update type. Saved to a file first: grep -q stopping early
+          # would fail a pipe under pipefail and hide a match.
+          gh api --paginate "repos/$GH_REPO/pulls/$number/commits" --jq '.[].commit.message' > "$RUNNER_TEMP/commits"
+          # Dependabot names each update's semver step in its commit message (what dependabot/fetch-metadata
+          # reads). A major one can change behaviour Tests don't cover, so a person reviews and merges it.
+          if [ "$(jq -r '.user.login' "$RUNNER_TEMP/pr.json")" = "dependabot[bot]" ]; then
+            if grep -qE '^[[:space:]]*update-type: version-update:semver-major[[:space:]]*$' "$RUNNER_TEMP/commits"; then
+              printf '%s\n' "This is a major version update, so it is not merged automatically: a major version can" \
+                "change behaviour that Tests don't cover. Read the release notes above, then merge it by hand." \
+                > "$RUNNER_TEMP/major"
+              gh api "repos/$GH_REPO/issues/$number/labels" -f "labels[]=hold" >/dev/null
+              gh api "repos/$GH_REPO/issues/$number/comments" -F "body=@$RUNNER_TEMP/major" >/dev/null
+              echo "#$number is a major version update; on hold for review."
+              exit 0
+            fi
+          fi
+          title=$(jq -r '.title' "$RUNNER_TEMP/pr.json")
+          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" | tr -d '\r' > "$RUNNER_TEMP/description"
+          fixed=$({ grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]+\b' "$RUNNER_TEMP/description" || true; } \
+                    | sed 's/.*#//' | sort -un)
+
+          summary=$(awk '/^## /{keep = ($0 == "## Summary"); next} keep && !/^<!--.*-->$/' "$RUNNER_TEMP/description" \
+                      | sed '/./,$!d')
+          {
+            if [ -n "$summary" ]; then printf '%s\n\n' "$summary"; fi
+            for issue in $fixed; do echo "Fixes #$issue"; done
+          } | cat -s | sed '/./,$!d' > "$RUNNER_TEMP/message"
+
+          # Tests gets no secrets for a Dependabot run, so only its own run skips the check; a person who edits
+          # a Dependabot pull request and runs Tests again is checked. The script never sees the token or the secret.
+          if [ "$TESTED_BY" != "dependabot[bot]" ]; then
+            if ! printf '%s\n' "$PATTERNS" | tr -d '\r' | sed '/^[[:space:]]*$/d' > "$RUNNER_TEMP/patterns" || [ ! -s "$RUNNER_TEMP/patterns" ]; then
+              echo "::error::The repo secret PRIVACY_PATTERNS is not set, so the squash commit's text was not checked; #$number is not merged."
+              exit 1
+            fi
+            gh api -H 'Accept: application/vnd.github.raw' "repos/$GH_REPO/contents/tools/identifying_details.py?ref=main" \
+              > "$RUNNER_TEMP/identifying_details.py"
+            if [ ! -s "$RUNNER_TEMP/identifying_details.py" ]; then
+              echo "::error::The check for identifying details could not be fetched from main; #$number is not merged."
+              exit 1
+            fi
+            check() { env -u GH_TOKEN -u PATTERNS python3 -I "$RUNNER_TEMP/identifying_details.py" "$@" 2>&1; }
+            if ! problem=$(check --check-patterns "$RUNNER_TEMP/patterns"); then
+              echo "::error::${problem:-The patterns could not be checked.}"
+              exit 1
+            fi
+            printf '%s\n' "$title (#$number)" > "$RUNNER_TEMP/squash-subject"
+            if ! found=$(check --squash "$RUNNER_TEMP/patterns" "$RUNNER_TEMP/squash-subject" "$RUNNER_TEMP/message"); then
+              echo "::error::${found:-The search for identifying details failed.}"
+              case "$found" in
+                Identifying*)
+                  printf '%s\n' "$found" "Edit the text, then run Tests again so the pull request can merge." > "$RUNNER_TEMP/blocked"
+                  gh api "repos/$GH_REPO/issues/$number/comments" -F "body=@$RUNNER_TEMP/blocked" >/dev/null || true ;;
+              esac
+              exit 1
+            fi
+          fi
+
+          labels=""
+          for issue in $fixed; do
+            issue_labels=$(gh api "repos/$GH_REPO/issues/$issue" --jq 'select(.pull_request | not) | .labels[].name') \
+              || { echo "::warning::Couldn't read #$issue's labels."; continue; }
+            labels+="$issue_labels"$'\n'
+          done
+          for label in $(printf '%s' "$labels" | { grep -xE 'bug|enhancement|feature' || true; } | sort -u); do
+            gh api "repos/$GH_REPO/issues/$number/labels" -f "labels[]=$label" >/dev/null
+            echo "Labelled #$number $label."
+          done
+
+          if [ "$draft" = "true" ]; then gh pr ready "$number"; fi
+          gh pr merge "$number" --squash --match-head-commit "$SHA" --subject "$title (#$number)" --body-file "$RUNNER_TEMP/message"
+          merged=$(gh api "repos/$GH_REPO/pulls/$number" --jq '.merge_commit_sha')
+          gh api -X DELETE "repos/$GH_REPO/git/refs/heads/$BRANCH" || echo "Branch $BRANCH was already gone."
+
+          merged_tree=$(gh api "repos/$GH_REPO/git/commits/$merged" --jq '.tree.sha')
+          tested_tree=$(gh api "repos/$GH_REPO/git/commits/$SHA" --jq '.tree.sha')
+          if [ "$merged_tree" = "$tested_tree" ] && [ "$TESTED_BY" != "dependabot[bot]" ]; then
+            echo "#$number's squash commit holds exactly what its Tests run checked; releasing $merged."
+            echo "release_sha=$merged" >> "$GITHUB_OUTPUT"
+          else
+            echo "main moved since #$number's Tests run (or Dependabot's run skipped the privacy check); testing main."
+            gh workflow run tests.yml --ref main
+          fi
+
+          for issue in $fixed; do
+            state=$(gh api "repos/$GH_REPO/issues/$issue" --jq 'if .pull_request then "pr" else .state end' || echo missing)
+            if [ "$state" = "open" ]; then
+              gh api -X PATCH "repos/$GH_REPO/issues/$issue" -f state=closed -f state_reason=completed >/dev/null \
+                && echo "Closed #$issue (fixed by #$number)." || echo "::warning::Couldn't close #$issue."
+            else
+              echo "#$issue is $state; left as it is."
+            fi
+          done
+
+  release:
+    # Only when the squash commit holds exactly what the pull request's Tests run checked (see the merge step).
+    needs: [merge]
+    if: needs.merge.outputs.release_sha != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      sha: ${{ needs.merge.outputs.release_sha }}
+    permissions:    # the ceiling for Release, whose jobs each take only their part (see release.yml)
+      contents: write
+      pull-requests: write
+      issues: write
+
+  delete-branch:
+    # Pull requests merged by hand: delete their branch too.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != 'main' &&
+      github.event.pull_request.head.ref != 'stable'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write    # delete the branch
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ github.event.pull_request.head.ref }}
+    steps:
+      - run: gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$BRANCH" || echo "Branch $BRANCH was already gone."

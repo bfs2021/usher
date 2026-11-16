@@ -1,0 +1,43 @@
+name: Doesn't work with my version of …
+description: Usher misbehaves with a particular version of Jellyfin, Sonarr, Radarr, Prowlarr or Transmission
+labels: [bug]
+body:
+  - type: dropdown
+    id: app
+    attributes:
+      label: Which app
+      options: [Jellyfin, Sonarr, Radarr, Prowlarr, Transmission]
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: Version of that app
+      description: From the app's own About or System page, for example 4.0.1.
+    validations:
+      required: true
+  - type: input
+    id: usher_version
+    attributes:
+      label: Usher version
+      description: Shown on the Status page.
+    validations:
+      required: true
+  - type: textarea
+    id: happens
+    attributes:
+      label: What happens
+      description: What you saw, and where in the app. Leave out addresses, names and IDs.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Status details
+      description: Open Status, tap the app, and paste what the details say. Leave out addresses, names and IDs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen

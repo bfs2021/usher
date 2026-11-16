@@ -1,0 +1,21 @@
+/* Sign-in and Can't reach home. */
+
+/* ---- sign in ------------------------------------------------------------------------------- */
+.signin { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.signin form { width: min(360px, 100%); display: grid; gap: 14px; text-align: center; }
+.signin img { width: 84px; height: 84px; border-radius: 19px; margin: 0 auto 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); }
+.signin h1 { font-size: 1.75rem; font-weight: 700; }
+.signin p { color: var(--label-2); }
+.fields { background: var(--bg-elevated); border-radius: var(--radius); overflow: hidden; text-align: left; }
+.fields input { display: block; width: 100%; border: 0; background: none; padding: 13px 14px; font-size: 1.0625rem; outline: none; }
+.fields input + input { border-top: 0.5px solid var(--separator); }
+/* ---- can't reach home ---- */
+.away .empty { max-width: 420px; }
+.away-actions { display: grid; gap: 10px; margin: 20px auto 10px; max-width: 300px; }
+.away-actions .btn { text-decoration: none; text-align: center; }
+.away-help { margin-top: 18px; text-align: left; color: var(--label-2); font-size: 0.9375rem; }
+.away-help summary { cursor: pointer; color: var(--accent-text); text-align: center; }
+.away-help ol { margin: 12px 0 8px 20px; display: grid; gap: 6px; }
+.away-help strong { color: var(--label); font-weight: 600; word-break: break-all; }
+.banner.offline a.link { color: var(--accent-text); font-weight: 600; }
+.signin .error { color: var(--red); font-size: 0.9375rem; min-height: 1.3em; }

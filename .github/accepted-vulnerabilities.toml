@@ -1,0 +1,14 @@
+# Known vulnerabilities the weekly checks accept on purpose (.github/workflows/weekly-checks.yml).
+# pip-audit checks requirements.txt and Grype checks the built image; a finding with a fix available fails the
+# run and opens the issue labelled `vulnerabilities`, unless it is listed here. Fix a finding instead of listing
+# it whenever an update is available that Usher can take.
+#
+# Each entry names one advisory (its ID or any alias pip-audit or Grype reports: CVE-…, GHSA-…, PYSEC-…), why it
+# doesn't affect Usher, and the date the acceptance ends. The entry still holds on that day; after it, the
+# finding counts again and the issue names the expired entry, so it is renewed with a fresh reason or removed.
+# tests/test_vulnerability_checks.py checks this format on every pull request.
+#
+# [[accepted]]
+# id = "CVE-2030-0001"
+# reason = "Only reachable through a function Usher never calls."
+# expires = 2030-12-31

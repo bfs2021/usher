@@ -1,0 +1,46 @@
+version: 2
+# Monthly, and one pull request per ecosystem: each update goes through Tests, merge and a release,
+# which all cost Actions minutes.
+# Auto-merge squash-merges a patch or minor update once Tests pass. A pull request with a major version
+# update (in a group, any one of them) stays open with the "hold" label and a comment saying it is a major
+# update: a major version can change behaviour Tests don't cover, so a person reads its release notes and
+# merges it by hand.
+# A release is only proposed once it is a week old, so one that is pulled or found to be compromised
+# soon after publishing never reaches a pull request.
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      pip:
+        patterns: ["*"]
+    labels: [enhancement]
+  # Workflows pin each action to a commit hash with its version in a trailing comment; Dependabot
+  # updates both together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [enhancement]
+  # The Dockerfile's base image, pinned to a Python minor version and an image digest. Dependabot proposes
+  # the digest of the same minor version each month, and a new minor version when one comes out; the tests
+  # then run on that version (tests/test_base_image.py). The weekly checks scan the image built from it for
+  # known vulnerabilities.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns: ["*"]
+    labels: [enhancement]

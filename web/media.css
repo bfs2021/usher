@@ -1,0 +1,24 @@
+/* Jellyfin rows, unread dots and finished requests, and Home's mark all as seen. */
+
+/* ---- Jellyfin rows, unread dots, finished requests ------------------------------------------ */
+.card .art { position: relative; }
+.shelf.wide { grid-auto-columns: 240px; }
+@container shell (min-width: 700px) { .shelf.wide { grid-auto-columns: 280px; } }
+.shelf.wide .card .poster { aspect-ratio: 16 / 9; }
+.card-progress { position: absolute; left: 8px; right: 8px; bottom: 8px; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.45); overflow: hidden; }
+.card-progress > i { display: block; height: 100%; width: var(--p); background: var(--accent); }
+/* Jellyfin's corner indicators: a count of new episodes, a dot for a new movie, a tick when watched */
+.played, .indicator { position: absolute; top: 6px; right: 6px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; display: grid; place-items: center; font-size: 0.8125rem; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
+.played { background: var(--green); color: var(--on-green); padding: 0; width: 24px; }
+.indicator { background: var(--accent); color: var(--on-accent); }
+.indicator.dot { min-width: 14px; width: 14px; height: 14px; padding: 0; top: 8px; right: 8px; }
+.played svg { width: 14px; height: 14px; stroke-width: 3; }
+.count.new { color: var(--accent-text); font-weight: 600; }
+.dots.complete i.done { background: var(--green); }
+.journey li.ok .marker { background: var(--green); border-color: var(--green); color: var(--on-green); }
+.journey li.ok::after { background: var(--green) !important; }
+a.btn { display: block; text-align: center; text-decoration: none; }
+
+/* ---- Home: mark all as seen ---- */
+.head-end { display: flex; align-items: baseline; gap: 14px; font-size: 0.9375rem; } .head-end .count { color: var(--label-2); } .head-end button.link { font-size: inherit; }
+.overview.warning { color: var(--orange); }

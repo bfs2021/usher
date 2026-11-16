@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+data/
+site.env
+# Downloaded tools and archives stay outside the repo (CONTRIBUTING.md, Working on a change)
+*.whl
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.egg
+*.deb
+*.rpm
+.coverage

@@ -1,0 +1,16 @@
+/* A small "…" menu (web/menu.js). The panel is opaque, so Reduce Transparency changes nothing; it fades in
+   only when motion is allowed. Items are 44 px tall for touch. */
+.watch-row { display: flex; gap: 8px; }
+.watch-row > a.btn { flex: 1; }
+.menu { position: relative; flex: none; }
+.menu-btn { width: 44px; padding: 0; display: grid; place-items: center; }
+.menu-btn svg { width: 22px; height: 22px; }
+.menu-list {
+  position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 5; min-width: 15rem; padding: 6px; border-radius: 14px;
+  background: var(--bg-elevated); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22), 0 0 0 0.5px var(--separator);
+}
+.menu-list[hidden] { display: none; }
+@media (prefers-reduced-motion: no-preference) { .menu-list { animation: menu-in 0.15s ease-out; } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.menu-item { display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 10px; color: var(--label); text-decoration: none; font-size: 1.0625rem; }
+.menu-item:hover, .menu-item:active { background: var(--fill); }

@@ -1,0 +1,87 @@
+name: Strip footer
+# The tool a coding session uses to open issues and pull requests and to comment adds a footer to every body it
+# writes, after the session's own text is final, so no setting reaches it. This workflow removes the exact trailing
+# footer (it carries a link a public reader can't open) when an issue, a pull request or a comment is opened,
+# created or edited (.github/scripts/strip_footer.py).
+# It edits with the workflow's own token: the tool's rewrite doesn't apply to it, and an edit made with that token
+# starts no new run. A text without the footer is not written at all, and the script reads the current text again
+# before it writes, so a later edit isn't overwritten. Existing text isn't rewritten. A fork's pull request
+# description keeps its footer (its token can't write); any comment ending with the footer is edited, a fork's too.
+# Each job asks for the one permission it writes with, and to read the contents for the checkout. Nothing from the event reaches a shell: the text and the
+# number go through env. A pull request from a fork is skipped (its token can't write); the other jobs check out
+# main, never the event's code. It never uses pull_request_target.
+on:
+  issues:
+    types: [opened, edited]
+  pull_request:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+permissions: {}
+jobs:
+  issue:
+    if: github.event_name == 'issues'
+    concurrency:
+      group: strip-footer-issue-${{ github.event.issue.number }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # the checkout of the script
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Remove the footer from the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KIND: issue
+          ID: ${{ github.event.issue.number }}
+          TEXT: ${{ github.event.issue.body }}
+        run: python3 .github/scripts/strip_footer.py
+  pull-request:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    concurrency:
+      group: strip-footer-pull-request-${{ github.event.pull_request.number }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # the checkout of the script
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Remove the footer from the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KIND: pull_request
+          ID: ${{ github.event.pull_request.number }}
+          TEXT: ${{ github.event.pull_request.body }}
+        run: python3 .github/scripts/strip_footer.py
+  comment:
+    if: github.event_name == 'issue_comment'
+    concurrency:
+      group: strip-footer-comment-${{ github.event.comment.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # the checkout of the script
+      issues: write # a pull request's conversation comments are issue comments too
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Remove the footer from the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KIND: comment
+          ID: ${{ github.event.comment.id }}
+          TEXT: ${{ github.event.comment.body }}
+        run: python3 .github/scripts/strip_footer.py

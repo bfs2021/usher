@@ -1,0 +1,22 @@
+# Tool settings only; Usher itself is not a package. Pinned tool versions are in requirements-dev.txt.
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+# Real mistakes only (pyflakes, syntax, import and comparison errors); style is left to the formatter.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+skip-magic-trailing-comma = false
+
+[tool.coverage.run]
+source = ["usher"]
+branch = false
+
+[tool.coverage.report]
+# Measured 76.27% when set; raise it as coverage grows, never lower it.
+fail_under = 76
+show_missing = false

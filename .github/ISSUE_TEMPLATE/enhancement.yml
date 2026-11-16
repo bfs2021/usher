@@ -1,0 +1,20 @@
+name: Enhancement
+description: Make something that already exists work better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: now
+    attributes:
+      label: How it works now
+    validations:
+      required: true
+  - type: textarea
+    id: better
+    attributes:
+      label: How it should work
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: How to check it
