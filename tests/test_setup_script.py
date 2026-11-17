@@ -10,7 +10,7 @@ from pathlib import Path
 SETUP = Path(__file__).resolve().parent.parent / "deploy" / "setup.sh"
 BASH = shutil.which("bash")
 # The tools deploy/README.md lists under Requirements, as setup.sh looks for them
-TOOLS = ("git", "curl", "ssh", "ssh-keygen", "ssh-keyscan", "flock", "cmp", "logger", "systemctl", "python3", "docker")
+TOOLS = ("git", "curl", "flock", "cmp", "logger", "systemctl", "python3", "docker")
 
 
 class SetupScriptTests(unittest.TestCase):
@@ -92,14 +92,35 @@ class ToolCheckTests(unittest.TestCase):
         self.assertIn("site.env is missing", run.stdout)
         self.assertFalse(self.home.exists())
 
+    def test_no_ssh_tools_are_needed(self):
+        """Only the tools above are on the path, and none of them is ssh, ssh-keygen or ssh-keyscan."""
+        self.assertFalse({"ssh", "ssh-keygen", "ssh-keyscan"} & {p.name for p in self.bin.iterdir()})
+        self.assertIn("site.env is missing", self.run_setup().stdout)
+
+    def test_a_repo_address_that_is_not_https_is_refused(self):
+        self.home.mkdir()
+        (self.home / "site.env").write_text("USHER_REPO=git@github.com:example/usher.git\n")
+        run = self.run_setup()
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("must be an https:// address", run.stdout)
+
+    def test_an_unreadable_repo_stops_setup_with_a_hint(self):
+        self.home.mkdir()
+        (self.home / "site.env").write_text("USHER_REPO=https://example.invalid/usher.git\n")
+        self.fake("git", "exit 128")
+        run = self.run_setup()
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("can't read https://example.invalid/usher.git", run.stdout)
+        self.assertNotIn("ssh", [c.split()[0] for c in self.log.read_text().splitlines()])
+
     def test_missing_git_is_named_and_nothing_is_created(self):
         (self.bin / "git").unlink()
         self.assertStopsNaming(self.run_setup(), "git")
 
     def test_every_missing_tool_is_named_in_one_line(self):
         (self.bin / "flock").unlink()
-        (self.bin / "ssh-keyscan").unlink()
-        self.assertStopsNaming(self.run_setup(), "flock", "ssh-keyscan")
+        (self.bin / "cmp").unlink()
+        self.assertStopsNaming(self.run_setup(), "flock", "cmp")
 
     def test_missing_docker_is_named_once(self):
         (self.bin / "docker").unlink()
