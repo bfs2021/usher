@@ -31,8 +31,9 @@ class ApiError(Exception):
 
 
 def _open(req, timeout=TIMEOUT):
-    # The integrations live on localhost; never follow redirects or honour proxy settings.
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    # The integrations live on localhost; never follow redirects (urllib would send the key on to wherever they point)
+    # or honour proxy settings.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     return opener.open(req, timeout=timeout)
 
 
@@ -50,6 +51,8 @@ class Arr:
         try:
             with _open(req, timeout=_timeout) as r:
                 return json.load(r)
+        except urllib.error.HTTPError as e:
+            raise ApiError(f"{self.name}: {e}", e.code) from None
         except (urllib.error.URLError, OSError, ValueError) as e:
             raise ApiError(f"{self.name}: {e}") from None
 
@@ -160,7 +163,7 @@ class Transmission:
                 if e.code == 409:
                     self._handshake(e.headers)
                     continue
-                raise ApiError(f"transmission: {method}: HTTP {e.code}") from None
+                raise ApiError(f"transmission: {method}: HTTP {e.code}", e.code) from None
             except (urllib.error.URLError, OSError, ValueError, AttributeError) as e:
                 raise ApiError(f"transmission: {method}: {e}") from None
         raise ApiError("transmission: session handshake failed")
@@ -216,6 +219,8 @@ class Jellyfin:
         try:
             with _open(self._req(path, **params)) as r:
                 return json.load(r)
+        except urllib.error.HTTPError as e:
+            raise ApiError(f"jellyfin: {e}", e.code) from None
         except (urllib.error.URLError, OSError, ValueError) as e:
             raise ApiError(f"jellyfin: {e}") from None
 
