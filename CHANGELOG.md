@@ -2,6 +2,11 @@
 
 All notable changes to Usher, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the app's own numbering (minor for a feature, patch for a fix). Each release's full notes are on the Releases page.
 
+## [1.3.0]
+
+### Added
+- A new Usher with no accounts now prints a one-time setup code in its log and shows a Setup page. Entering the code lets the first person create their account, who becomes the admin. Settings and secrets an admin saves are kept by Usher itself, in `usher.toml` and a file beside it that only Usher can read, and are never shown back in full; the screens for entering them are still to come. Servers that already have accounts keep working as before, with nothing to do.
+
 ## [1.2.0]
 
 ### Added
