@@ -44,6 +44,7 @@ def merge(**changes):
         "body": BODY,
         "version": "1.2.0",
         "release_commit": SHA,
+        "released_later": False,
         "stable": "identical",
         "issues": {7: "closed"},
         "files": [{"filename": "README.md", "patch": "@@ -1 +1 @@\n-a\n+b"}],
@@ -251,6 +252,93 @@ class ReleaseAndStableTests(unittest.TestCase):
             verdict, lines = run(stable=status)
             self.assertEqual(verdict, "PROBLEM", status)
             self.assertIn(f"`stable` is not at the merge commit ({status}).", line(lines, "`stable`"))
+
+
+class SupersededMergeTests(unittest.TestCase):
+    """A merge whose report comes late, after a later merge moved `stable` past it and released its version at the later
+    commit. Both signs are needed: `stable` alone is also how a promote that failed after moving it would look."""
+
+    LATER = "89abcdef0123456789abcdef0123456789abcdef"
+
+    def superseded(self, **changes):
+        # Promote's fast-forward push is refused when `stable` is already past the commit, so promote failed and the
+        # image job, which needs it, never ran.
+        data = {
+            "stable": "ahead",
+            "released_later": True,
+            "promote": "failure",
+            "image": "skipped",
+            "release_commit": self.LATER,
+            "files": [{"filename": "usher/server.py"}],
+        }
+        data.update(changes)
+        return run(**data)
+
+    def test_is_information_and_not_a_problem(self):
+        verdict, lines = self.superseded()
+        self.assertEqual(verdict, "OK")
+        self.assertEqual(lines[0], "OK: the merge of #42 (0123456789ab) passed every check.")
+        self.assertFalse([entry for entry in lines if entry.startswith("- **problem**")])
+        self.assertIn("**info**: The promote job didn't finish (failure), but `stable` is already past the merge commit", line(lines, "The promote job"))
+        self.assertIn("**info**: Version 1.2.0 was released at a later commit", line(lines, "Version"))
+        self.assertIn("**info**: `stable` is past the merge commit: a later merge was released since.", line(lines, "`stable` is past"))
+
+    def test_any_unfinished_promote_is_excused_once_both_signs_hold(self):
+        for result in ("cancelled", "failure"):
+            self.assertEqual(self.superseded(promote=result)[0], "OK", result)
+
+    def test_stable_ahead_alone_is_not_enough(self):
+        # Promote moved `stable`, then failed before it released the version, and a later merge went past it.
+        for tagged in (None, EARLIER):
+            verdict, lines = self.superseded(released_later=False, release_commit=tagged)
+            self.assertEqual(verdict, "PROBLEM", tagged)
+            self.assertIn("**problem**: The promote job didn't finish (failure)", line(lines, "The promote job"))
+        self.assertIn("**problem**: Version 1.2.0 has no release.", line(self.superseded(released_later=False, release_commit=None)[1], "Version"))
+        self.assertIn("the version wasn't bumped", line(self.superseded(released_later=False, release_commit=EARLIER)[1], "Version"))
+
+    def test_a_failed_image_job_still_counts(self):
+        verdict, lines = self.superseded(image="failure")
+        self.assertEqual(verdict, "PROBLEM")
+        self.assertIn("**problem**: The image job didn't finish (failure)", line(lines, "image job"))
+
+    def test_other_checks_still_count(self):
+        verdict, lines = self.superseded(issues={7: "open"}, unlabelled=[3])
+        self.assertEqual(verdict, "PROBLEM")
+        self.assertEqual(lines[0], "PROBLEM: the merge of #42 (0123456789ab) needs attention: 2 check(s) failed.")
+        self.assertIn("**problem**: Not every issue it fixes is closed", line(lines, "fixes"))
+
+    def test_a_missing_version_is_not_a_late_report(self):
+        self.assertEqual(self.superseded(version=None)[0], "PROBLEM")
+
+    def test_a_merge_that_was_released_itself_is_still_ok_when_stable_moved_on(self):
+        verdict, lines = run(stable="ahead")
+        self.assertEqual(verdict, "OK")
+        self.assertEqual("- **ok**: The promote job finished.", line(lines, "The promote job"))
+        self.assertIn("Version 1.2.0 is released at the merge commit.", line(lines, "Version"))
+
+    def test_without_stable_past_it_the_same_failures_are_problems(self):
+        for status in ("behind", "diverged", "missing", "identical"):
+            files = [{"filename": "usher/server.py"}]
+            verdict, lines = run(stable=status, released_later=True, promote="failure", image="skipped", release_commit=self.LATER, files=files)
+            self.assertEqual(verdict, "PROBLEM", status)
+            self.assertIn("**problem**: The promote job didn't finish (failure)", line(lines, "The promote job"))
+            self.assertIn("**problem**: Version 1.2.0 was already released at an earlier commit", line(lines, "Version"))
+
+    def test_collect_reads_a_superseded_merge(self):
+        later = {f"compare/{SHA}...stable": {"status": "ahead"}, "commits/v1.2.0": {"sha": self.LATER}, f"compare/{SHA}...{self.LATER}": {"status": "ahead"}}
+        data = report_mod.collect(fake_github(**later), SHA, promote="failure", now=NOW, image="skipped")
+        self.assertEqual((data["stable"], data["release_commit"], data["released_later"]), ("ahead", self.LATER, True))
+        data["unlabelled"], data["files"] = [], [{"filename": "usher/server.py"}]  # the made-up open issues and files aren't the point
+        verdict, text = report_mod.report(data)
+        self.assertEqual(verdict, "OK", text)
+
+    def test_collect_does_not_call_a_tag_at_an_earlier_commit_or_the_merge_later(self):
+        for answer in ({"status": "behind"}, {"status": "diverged"}, None):
+            later = {"commits/v1.2.0": {"sha": self.LATER}, f"compare/{SHA}...{self.LATER}": answer}
+            self.assertFalse(report_mod.collect(fake_github(**later), SHA, now=NOW)["released_later"], answer)
+        self.assertFalse(report_mod.collect(fake_github(), SHA, now=NOW)["released_later"])  # released at the merge itself
+        none = {"releases/tags/v1.2.0": None}
+        self.assertFalse(report_mod.collect(fake_github(**none), SHA, now=NOW)["released_later"])
 
 
 class DependabotTests(unittest.TestCase):
