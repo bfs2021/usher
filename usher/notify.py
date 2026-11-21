@@ -42,6 +42,7 @@ class Notifier:
         self.pool = ThreadPoolExecutor(max_workers=2)
         self._server_bad_since = None
         self._recent_ready: dict = {}  # title -> when a request's "ready" was sent, to avoid a second ping
+        self.releases = None  # set by the server: the check for a newer release
         self._held: dict = {}  # media server item id -> when it was first seen without its season or episode number
 
     # deciding ------------------------------------------------------------------------
@@ -160,6 +161,21 @@ class Notifier:
                 )
         else:
             self._server_bad_since = None
+
+        newest = self.releases.available() if self.releases else None
+        key = f"release:{newest}"
+        if newest and any(u["admin"] and not self.store.seen(f"{key}:{u['id']}") for u in self.store.users()):
+            events.append(
+                dict(
+                    kind="server",
+                    title="A new version of Usher is out",
+                    body=f"Version {newest} is available. Settings → About → Updates has the command to update.",
+                    url="/",
+                    short="a new version of Usher",
+                    admin=True,
+                    key=key,
+                )
+            )
         return events
 
     # sending ---------------------------------------------------------------------------
@@ -167,7 +183,13 @@ class Notifier:
         for user in self.store.users():
             badge = unread_count(home_rows, self.store.baseline(user["id"]), self.store.opened(user["id"]))
             prefs = self.store.prefs(user["id"])
-            mine = [e for e in events if prefs[e["kind"]]]
+            # An admin-only event is offered to each admin once, whatever their switches say, so it is neither
+            # repeated nor lost for an admin who is added later.
+            fresh = [e for e in events if not e.get("admin") or (user["admin"] and not self.store.seen(f"{e['key']}:{user['id']}"))]
+            for e in fresh:
+                if e.get("admin"):
+                    self.store.mark(f"{e['key']}:{user['id']}")
+            mine = [e for e in fresh if prefs[e["kind"]]]
             if len(mine) == 1:
                 e = mine[0]
                 self._send(user, {"title": e["title"], "body": e["body"], "url": e["url"], "badge": badge, "tag": e["kind"]}, topic=e["title"])
