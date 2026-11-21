@@ -28,7 +28,7 @@ globalThis.caches = {
 };
 const flush = async () => { for (const fn of timers.splice(0)) fn(); for (let i = 0; i < 5; i++) await tick(); };
 const opened = () => { lists.drop(...Object.keys(LISTS).filter((n) => n !== "me")); store.snap = null; };
-const signedInAs = (account, version = "1.0.0") => lists.set("me", { account, version, csrf: "t" });
+const signedInAs = (account, build = "1.0.0+aaaaaaaa") => lists.set("me", { account, build, csrf: "t" });
 """
 
 
@@ -86,17 +86,33 @@ out({ shown: lists.show("library"), boxes: [...boxes.keys()] });
         self.assertIsNone(got["shown"])
         self.assertEqual(got["boxes"], [], "another account's copies are deleted, artwork included")
 
-    def test_a_copy_from_another_version_is_not_shown(self):
+    def test_a_copy_saved_before_builds_existed_is_not_shown(self):
         got = run("""
-signedInAs(7, "1.0.0");
+signedInAs(7);
 await lists.load("library");
 await flush();
+const box = await caches.open("usher-data");
+const saved = await (await box.match("/saved/library")).json();
+delete saved.build;
+saved.version = "1.4.10";
+await box.put("/saved/library", new Response(JSON.stringify(saved)));
 opened();
-signedInAs(7, "1.1.0");
 await lists.restore();
 out(lists.show("library"));
 """)
-        self.assertIsNone(got, "an older version's copy may not have the fields this one draws")
+        self.assertIsNone(got)
+
+    def test_a_copy_from_another_build_is_not_shown(self):
+        got = run("""
+signedInAs(7, "1.0.0+aaaaaaaa");
+await lists.load("library");
+await flush();
+opened();
+signedInAs(7, "1.0.0+bbbbbbbb");
+await lists.restore();
+out(lists.show("library"));
+""")
+        self.assertIsNone(got, "an older build's copy may not have the fields this one draws, even when no release came between")
 
     def test_nothing_is_restored_before_the_server_confirms_the_account(self):
         got = run("""
